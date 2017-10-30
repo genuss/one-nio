@@ -28,9 +28,9 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.net.URL;
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 
 public class SerializationTest extends TestCase {
 
@@ -368,4 +368,30 @@ public class SerializationTest extends TestCase {
         checkSerialize(new Parent());
         checkSerialize(new Child());
     }
+
+    static class SqlDatetime implements Serializable {
+        private final java.sql.Date date;
+        private final java.sql.Time time;
+
+        SqlDatetime(java.sql.Date date, java.sql.Time time) {
+            this.date = date;
+            this.time = time;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            SqlDatetime sqlDatetime = (SqlDatetime) o;
+            return Objects.equals(date, sqlDatetime.date) &&
+                    Objects.equals(time, sqlDatetime.time);
+        }
+    }
+
+    public void testSqlDatetime() throws IOException, ClassNotFoundException {
+
+        checkSerialize(new SqlDatetime(new java.sql.Date(System.currentTimeMillis()),
+                new java.sql.Time(System.currentTimeMillis())));
+    }
+
 }

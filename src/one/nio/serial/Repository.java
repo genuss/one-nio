@@ -20,7 +20,6 @@ import one.nio.gen.BytecodeGenerator;
 import one.nio.mgt.Management;
 import one.nio.util.Base64;
 import one.nio.util.JavaInternals;
-
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -29,12 +28,14 @@ import java.io.IOException;
 import java.io.Serializable;
 import java.lang.reflect.Method;
 import java.math.BigInteger;
-import java.net.*;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
 
 import static java.nio.file.StandardOpenOption.*;
 
@@ -49,6 +50,8 @@ public class Repository {
     static final HashMap<String, Class> renamedClasses = new HashMap<>();
     static final AtomicInteger anonymousClasses = new AtomicInteger();
     static final int ENUM = 0x4000;
+    static private BiConsumer<Class, Serializer<?>> serializerGenerated = (cls, serializer) -> {
+    };
 
     public static final MethodSerializer provide =
             registerMethod(JavaInternals.getMethod(Repository.class, "provideSerializer", Serializer.class));
@@ -127,6 +130,9 @@ public class Repository {
         addBootstrap(new TimestampSerializer());
         addBootstrap(new RemoteCallSerializer());
         addBootstrap(new SerializerSerializer(MethodSerializer.class));
+
+        addBootstrap(new SqlDateSerializer());
+        addBootstrap(new SqlTimeSerializer());
 
         // Unable to run readObject/writeObject for the following classes.
         // Fortunately standard serialization works well for them.
@@ -302,48 +308,56 @@ public class Repository {
         return map.values().toArray(new Serializer[0]);
     }
 
-    private static synchronized Serializer generateFor(Class<?> cls) {
-        Serializer serializer = classMap.get(cls);
-        if (serializer == null) {
-            if (cls.isArray()) {
-                get(cls.getComponentType());
-                serializer = new ObjectArraySerializer(cls);
-            } else if ((cls.getModifiers() & ENUM) != 0) {
-                if (cls.getSuperclass() != Enum.class) {
-                    serializer = get(cls.getSuperclass());
-                    classMap.put(cls, serializer);
-                    return serializer;
-                }
-                serializer = new EnumSerializer(cls);
-            } else if (Externalizable.class.isAssignableFrom(cls)) {
-                if (Serializer.class.isAssignableFrom(cls)) {
-                    serializer = new SerializerSerializer(cls);
+    private static Serializer generateFor(Class<?> cls) {
+        Serializer serializer;
+        synchronized (Repository.class) {
+            serializer = classMap.get(cls);
+            if (serializer == null) {
+                if (cls.isArray()) {
+                    get(cls.getComponentType());
+                    serializer = new ObjectArraySerializer(cls);
+                } else if ((cls.getModifiers() & ENUM) != 0) {
+                    if (cls.getSuperclass() != Enum.class) {
+                        serializer = get(cls.getSuperclass());
+                        classMap.put(cls, serializer);
+                        return serializer;
+                    }
+                    serializer = new EnumSerializer(cls);
+                } else if (Externalizable.class.isAssignableFrom(cls)) {
+                    if (Serializer.class.isAssignableFrom(cls)) {
+                        serializer = new SerializerSerializer(cls);
+                    } else {
+                        serializer = new ExternalizableSerializer(cls);
+                    }
+                } else if (Collection.class.isAssignableFrom(cls) && !hasOptions(cls, FIELD_SERIALIZATION)) {
+                    serializer = new CollectionSerializer(cls);
+                } else if (Map.class.isAssignableFrom(cls) && !hasOptions(cls, FIELD_SERIALIZATION)) {
+                    serializer = new MapSerializer(cls);
+                } else if (Serializable.class.isAssignableFrom(cls)) {
+                    serializer = new GeneratedSerializer(cls);
                 } else {
-                    serializer = new ExternalizableSerializer(cls);
+                    serializer = new InvalidSerializer(cls);
                 }
-            } else if (Collection.class.isAssignableFrom(cls) && !hasOptions(cls, FIELD_SERIALIZATION)) {
-                serializer = new CollectionSerializer(cls);
-            } else if (Map.class.isAssignableFrom(cls) && !hasOptions(cls, FIELD_SERIALIZATION)) {
-                serializer = new MapSerializer(cls);
-            } else if (Serializable.class.isAssignableFrom(cls)) {
-                serializer = new GeneratedSerializer(cls);
-            } else {
-                serializer = new InvalidSerializer(cls);
-            }
 
-            serializer.generateUid();
-            provideSerializer(serializer);
+                serializer.generateUid();
+                provideSerializer(serializer);
 
-            if (cls.isAnonymousClass()) {
-                log.warn("Trying to serialize anonymous class: " + cls.getName());
-                anonymousClasses.incrementAndGet();
-            }
+                if (cls.isAnonymousClass()) {
+                    log.warn("Trying to serialize anonymous class: " + cls.getName());
+                    anonymousClasses.incrementAndGet();
+                }
 
-            Renamed renamed = cls.getAnnotation(Renamed.class);
-            if (renamed != null) {
-                renamedClasses.put(renamed.from(), cls);
+                Renamed renamed = cls.getAnnotation(Renamed.class);
+                if (renamed != null) {
+                    renamedClasses.put(renamed.from(), cls);
+                }
             }
         }
+        serializerGenerated.accept(cls, serializer);
         return serializer;
+    }
+
+    public static void setSerializerGeneratedHook(BiConsumer<Class, Serializer<?>> hook) {
+        serializerGenerated = hook;
     }
 }
