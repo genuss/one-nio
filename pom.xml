@@ -17,9 +17,8 @@
         </license>
     </licenses>
     <scm>
-        <url>https://github.com/odnoklassniki/one-nio</url>
-        <connection>scm:git:git@github.com:odnoklassniki/one-nio.git</connection>
-        <developerConnection>scm:git:git@github.com:odnoklassniki/one-nio.git</developerConnection>
+        <url>http://stash.open-broker.ru/projects/LIB/repos/one-nio/browse</url>
+        <connection>scm:git:ssh://git@stash.open-broker.ru/lib/one-nio.git</connection>
     </scm>
     <developers>
         <developer>
