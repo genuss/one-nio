@@ -1,5 +1,5 @@
 /*
- * Copyright 2015 Odnoklassniki Ltd, Mail.Ru Group
+ * Copyright 2017 Odnoklassniki Ltd, Mail.Ru Group
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,15 +14,14 @@
  * limitations under the License.
  */
 
-package one.nio.serial;
+package one.nio.http;
 
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
-import java.lang.annotation.Target;
+import one.nio.config.Config;
+import one.nio.server.ServerConfig;
 
-@Retention(RetentionPolicy.RUNTIME)
-@Target({ElementType.TYPE,  ElementType.FIELD})
-public @interface JsonName {
-    String value();
+import java.util.Map;
+
+@Config
+public class HttpServerConfig extends ServerConfig {
+    public Map<String, String[]> virtualHosts;
 }

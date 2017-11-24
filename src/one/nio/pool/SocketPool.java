@@ -26,6 +26,7 @@ public class SocketPool extends Pool<Socket> implements SocketPoolMXBean {
     protected int port;
     protected int readTimeout;
     protected int connectTimeout;
+    protected int tos;
     protected SslContext sslContext;
 
     public SocketPool(ConnectionString conn) {
@@ -36,7 +37,8 @@ public class SocketPool extends Pool<Socket> implements SocketPoolMXBean {
         this.host = conn.getHost();
         this.port = conn.getPort();
         this.readTimeout = conn.getIntParam("readTimeout", timeout);
-        this.connectTimeout = conn.getIntParam("connectTimeout", readTimeout);
+        this.connectTimeout = conn.getIntParam("connectTimeout", 1000);
+        this.tos = conn.getIntParam("tos", 0);
 
         setProperties(conn);
         initialize();
@@ -124,6 +126,11 @@ public class SocketPool extends Pool<Socket> implements SocketPoolMXBean {
             socket = Socket.create();
             socket.setKeepAlive(true);
             socket.setNoDelay(true);
+
+            if (tos != 0) {
+                socket.setTos(tos);
+            }
+
             socket.setTimeout(connectTimeout);
             socket.connect(host, port);
             socket.setTimeout(readTimeout);

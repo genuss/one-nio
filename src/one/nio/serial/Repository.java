@@ -42,12 +42,13 @@ import static java.nio.file.StandardOpenOption.*;
 public class Repository {
     public static final Log log = LogFactory.getLog(Repository.class);
 
-    static final IdentityHashMap<Class, Serializer> classMap = new IdentityHashMap<>(128);
-    static final HashMap<Long, Serializer> uidMap = new HashMap<>(128);
-    static final HashMap<Method, MethodSerializer> methodMap = new HashMap<>();
+    static final byte[][] classLocks = new byte[64][0];
+    static final ConcurrentHashMap<Class, Serializer> classMap = new ConcurrentHashMap<>(128);
+    static final ConcurrentHashMap<Long, Serializer> uidMap = new ConcurrentHashMap<>(128);
+    static final ConcurrentHashMap<Method, MethodSerializer> methodMap = new ConcurrentHashMap<>();
     static final Serializer[] bootstrapSerializers = new Serializer[128];
-    static final IdentityHashMap<Class, Integer> serializationOptions = new IdentityHashMap<>();
-    static final HashMap<String, Class> renamedClasses = new HashMap<>();
+    static final ConcurrentHashMap<Class, Integer> serializationOptions = new ConcurrentHashMap<>();
+    static final ConcurrentHashMap<String, Class> renamedClasses = new ConcurrentHashMap<>();
     static final AtomicInteger anonymousClasses = new AtomicInteger();
     static final int ENUM = 0x4000;
     static private BiConsumer<Class, Serializer<?>> serializerGenerated = (cls, serializer) -> {
@@ -207,7 +208,7 @@ public class Repository {
         return bootstrapSerializers[128 + uid];
     }
 
-    public static synchronized void provideSerializer(Serializer serializer) {
+    public static void provideSerializer(Serializer serializer) {
         Serializer oldSerializer = uidMap.put(serializer.uid, serializer);
         if (oldSerializer != null && oldSerializer.cls != serializer.cls) {
             throw new IllegalStateException("UID collision: " + serializer.descriptor + " overwrites " + oldSerializer.descriptor);
@@ -245,7 +246,7 @@ public class Repository {
         }
     }
 
-    public static synchronized void setOptions(Class cls, int options) {
+    public static void setOptions(Class cls, int options) {
         serializationOptions.put(cls, options);
         classMap.remove(cls);
     }
@@ -264,7 +265,7 @@ public class Repository {
     }
 
     public static byte[] saveSnapshot() throws IOException {
-        Serializer[] serializers = getSerializers(uidMap);
+        Serializer[] serializers = uidMap.values().toArray(new Serializer[0]);
 
         CalcSizeStream css = new CalcSizeStream();
         for (Serializer serializer : serializers) {
@@ -304,60 +305,64 @@ public class Repository {
         return loadSnapshot(snapshot);
     }
 
-    private static synchronized Serializer[] getSerializers(Map<?, ? extends Serializer> map) {
-        return map.values().toArray(new Serializer[0]);
-    }
-
     private static Serializer generateFor(Class<?> cls) {
-        Serializer serializer;
-        synchronized (Repository.class) {
-            serializer = classMap.get(cls);
-            if (serializer == null) {
-                if (cls.isArray()) {
-                    get(cls.getComponentType());
-                    serializer = new ObjectArraySerializer(cls);
-                } else if ((cls.getModifiers() & ENUM) != 0) {
-                    if (cls.getSuperclass() != Enum.class) {
-                        serializer = get(cls.getSuperclass());
-                        classMap.put(cls, serializer);
-                        return serializer;
-                    }
-                    serializer = new EnumSerializer(cls);
-                } else if (Externalizable.class.isAssignableFrom(cls)) {
-                    if (Serializer.class.isAssignableFrom(cls)) {
-                        serializer = new SerializerSerializer(cls);
-                    } else {
-                        serializer = new ExternalizableSerializer(cls);
-                    }
-                } else if (Collection.class.isAssignableFrom(cls) && !hasOptions(cls, FIELD_SERIALIZATION)) {
-                    serializer = new CollectionSerializer(cls);
-                } else if (Map.class.isAssignableFrom(cls) && !hasOptions(cls, FIELD_SERIALIZATION)) {
-                    serializer = new MapSerializer(cls);
-                } else if (Serializable.class.isAssignableFrom(cls)) {
-                    serializer = new GeneratedSerializer(cls);
-                } else {
-                    serializer = new InvalidSerializer(cls);
-                }
-
-                serializer.generateUid();
-                provideSerializer(serializer);
-
-                if (cls.isAnonymousClass()) {
-                    log.warn("Trying to serialize anonymous class: " + cls.getName());
-                    anonymousClasses.incrementAndGet();
-                }
-
-                Renamed renamed = cls.getAnnotation(Renamed.class);
-                if (renamed != null) {
-                    renamedClasses.put(renamed.from(), cls);
-                }
+        synchronized (classLockFor(cls)) {
+            Serializer serializer = classMap.get(cls);
+            if (serializer != null) {
+                return serializer;
             }
+
+            if (cls.isArray()) {
+                get(cls.getComponentType());
+                serializer = new ObjectArraySerializer(cls);
+            } else if ((cls.getModifiers() & ENUM) != 0) {
+                if (cls.getSuperclass() != Enum.class) {
+                    serializer = get(cls.getSuperclass());
+                    classMap.put(cls, serializer);
+                    return serializer;
+                }
+                serializer = new EnumSerializer(cls);
+            } else if (Externalizable.class.isAssignableFrom(cls)) {
+                if (Serializer.class.isAssignableFrom(cls)) {
+                    serializer = new SerializerSerializer(cls);
+                } else {
+                    serializer = new ExternalizableSerializer(cls);
+                }
+            } else if (Collection.class.isAssignableFrom(cls) && !hasOptions(cls, FIELD_SERIALIZATION)) {
+                serializer = new CollectionSerializer(cls);
+            } else if (Map.class.isAssignableFrom(cls) && !hasOptions(cls, FIELD_SERIALIZATION)) {
+                serializer = new MapSerializer(cls);
+            } else if (Serializable.class.isAssignableFrom(cls)) {
+                serializer = new GeneratedSerializer(cls);
+            } else {
+                serializer = new InvalidSerializer(cls);
+            }
+
+            serializer.generateUid();
+            provideSerializer(serializer);
+
+            if (cls.isAnonymousClass()) {
+                log.warn("Trying to serialize anonymous class: " + cls.getName());
+                anonymousClasses.incrementAndGet();
+            }
+
+            Renamed renamed = cls.getAnnotation(Renamed.class);
+            if (renamed != null) {
+                renamedClasses.put(renamed.from(), cls);
+            }
+
+            serializerGenerated.accept(cls, serializer);
+            return serializer;
         }
-        serializerGenerated.accept(cls, serializer);
-        return serializer;
     }
 
     public static void setSerializerGeneratedHook(BiConsumer<Class, Serializer<?>> hook) {
         serializerGenerated = hook;
     }
+
+    private static Object classLockFor(Class<?> cls) {
+        return classLocks[cls.hashCode() & (classLocks.length - 1)];
+    }
 }
+
+

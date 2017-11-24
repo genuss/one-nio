@@ -1,5 +1,5 @@
 /*
- * Copyright 2015 Odnoklassniki Ltd, Mail.Ru Group
+ * Copyright 2017 Odnoklassniki Ltd, Mail.Ru Group
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,15 +14,13 @@
  * limitations under the License.
  */
 
-package one.nio.serial;
+package one.nio.net;
 
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
-import java.lang.annotation.Target;
+import java.nio.channels.SelectableChannel;
 
-@Retention(RetentionPolicy.RUNTIME)
-@Target({ElementType.TYPE,  ElementType.FIELD})
-public @interface JsonName {
-    String value();
+/**
+ * @author ivan.grigoryev
+ */
+public abstract class SelectableJavaSocket extends Socket {
+    public abstract SelectableChannel getSelectableChannel();
 }
