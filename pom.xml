@@ -1,10 +1,9 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <groupId>ru.open.external.libs</groupId>
     <artifactId>one-nio</artifactId>
     <packaging>jar</packaging>
-    <version>1.0.1-SNAPSHOT</version>
+    <version>1.0.2</version>
     <name>one-nio</name>
     <url>https://github.com/odnoklassniki/one-nio</url>
     <description>Unconventional Java I/O library</description>
@@ -19,7 +18,8 @@
     <scm>
         <url>http://stash.open-broker.ru/projects/LIB/repos/one-nio/browse</url>
         <connection>scm:git:ssh://git@stash.open-broker.ru/lib/one-nio.git</connection>
-    </scm>
+      <tag>one-nio-1.0.2</tag>
+  </scm>
     <developers>
         <developer>
             <id>apangin</id>
@@ -97,26 +97,23 @@
                         <phase>compile</phase>
                         <configuration>
                             <target name="compile-native">
-                                <property name="build.dir"      value="target"/>
-                                <property name="src.dir"        value="src"/>
-                                <property name="gcc.extra.args" value=""/>
+                                <property name="build.dir" value="target" />
+                                <property name="src.dir" value="src" />
+                                <property name="gcc.extra.args" value="" />
 
-                                <echo message="Compiling native library..."/>
+                                <echo message="Compiling native library..." />
 
-                                <mkdir dir="${build.dir}/native"/>
+                                <mkdir dir="${build.dir}/native" />
 
                                 <pathconvert property="src.native" pathsep=" ">
-                                    <fileset dir="${src.dir}" includes="**/*.c"/>
+                                    <fileset dir="${src.dir}" includes="**/*.c" />
                                 </pathconvert>
 
                                 <exec os="Linux" executable="gcc">
-                                    <arg line="-g -O3 -fPIC -D_GNU_SOURCE ${gcc.extra.args}
-                                               -o ${build.dir}/native/libonenio.so -shared -Wl,-soname,libonenio.so
-                                               -I ${java.home}/../include -I ${java.home}/../include/linux
-                                               ${src.native} -ldl -lrt"/>
+                                    <arg line="-g -O3 -fPIC -D_GNU_SOURCE ${gcc.extra.args} -o ${build.dir}/native/libonenio.so -shared -Wl,-soname,libonenio.so                                                -I ${java.home}/../include -I ${java.home}/../include/linux                                                ${src.native} -ldl -lrt" />
                                 </exec>
 
-                                <move verbose="true" failonerror="false" file="${build.dir}/native/libonenio.so" todir="${build.dir}/classes"/>
+                                <move verbose="true" failonerror="false" file="${build.dir}/native/libonenio.so" todir="${build.dir}/classes" />
                             </target>
                         </configuration>
                         <goals>
