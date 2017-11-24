@@ -3,7 +3,7 @@
     <groupId>ru.open.external.libs</groupId>
     <artifactId>one-nio</artifactId>
     <packaging>jar</packaging>
-    <version>1.0.2</version>
+    <version>1.0.3-SNAPSHOT</version>
     <name>one-nio</name>
     <url>https://github.com/odnoklassniki/one-nio</url>
     <description>Unconventional Java I/O library</description>
@@ -18,7 +18,7 @@
     <scm>
         <url>http://stash.open-broker.ru/projects/LIB/repos/one-nio/browse</url>
         <connection>scm:git:ssh://git@stash.open-broker.ru/lib/one-nio.git</connection>
-      <tag>one-nio-1.0.2</tag>
+      <tag>HEAD</tag>
   </scm>
     <developers>
         <developer>
@@ -110,7 +110,7 @@
                                 </pathconvert>
 
                                 <exec os="Linux" executable="gcc">
-                                    <arg line="-g -O3 -fPIC -D_GNU_SOURCE ${gcc.extra.args} -o ${build.dir}/native/libonenio.so -shared -Wl,-soname,libonenio.so                                                -I ${java.home}/../include -I ${java.home}/../include/linux                                                ${src.native} -ldl -lrt" />
+                                    <arg line="-g -O3 -fPIC -D_GNU_SOURCE ${gcc.extra.args} -o ${build.dir}/native/libonenio.so -shared -Wl,-soname,libonenio.so -I ${java.home}/../include -I ${java.home}/../include/linux                                                ${src.native} -ldl -lrt" />
                                 </exec>
 
                                 <move verbose="true" failonerror="false" file="${build.dir}/native/libonenio.so" todir="${build.dir}/classes" />
