@@ -17,7 +17,6 @@
 package one.nio.gen;
 
 import one.nio.mgt.Management;
-
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.objectweb.asm.MethodVisitor;
@@ -39,7 +38,6 @@ public class BytecodeGenerator extends ClassLoader implements BytecodeGeneratorM
     private static final Log log = LogFactory.getLog(BytecodeGenerator.class);
 
     public static final BytecodeGenerator INSTANCE = new BytecodeGenerator();
-    public static final String MAGIC_CLASS = "sun/reflect/MagicAccessorImpl";
 
     static {
         Management.registerMXBean(INSTANCE, "one.nio.gen:type=BytecodeGenerator");
@@ -77,7 +75,7 @@ public class BytecodeGenerator extends ClassLoader implements BytecodeGeneratorM
     @SuppressWarnings("unchecked")
     public <T> T instantiate(byte[] classData, Class<T> iface) {
         try {
-            return (T) defineClass(classData).newInstance();
+            return (T) defineClass(classData).getDeclaredConstructor().newInstance();
         } catch (Exception e) {
             throw new IllegalArgumentException("Cannot instantiate class", e);
         }

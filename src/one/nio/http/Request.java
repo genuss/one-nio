@@ -22,7 +22,9 @@ import one.nio.util.Utf8;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.NoSuchElementException;
 
 public class Request {
@@ -66,7 +68,7 @@ public class Request {
     private int method;
     private String uri;
     private boolean http11;
-    private int params;
+    private int params; // -1 if no query parameters
     private int headerCount;
     private String[] headers;
     private byte[] body;
@@ -167,6 +169,23 @@ public class Request {
             throw new NoSuchElementException("Missing required parameter: " + key);
         }
         return value;
+    }
+
+    /**
+     * @return {@link Iterator} over {@code String} {@code key[=[value]]} parameters in order
+     *         skipping empty parameters
+     */
+    public Iterable<Map.Entry<String, String>> getParameters() {
+        if (params == -1) {
+            return Collections.emptyList();
+        }
+
+        return new Iterable<Map.Entry<String,String>>() {
+            @Override
+            public Iterator<Map.Entry<String, String>> iterator() {
+                return new QueryParameterIterator(uri.substring(params + 1));
+            }
+        };
     }
 
     public int getHeaderCount() {

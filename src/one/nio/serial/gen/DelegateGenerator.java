@@ -21,6 +21,8 @@ import one.nio.serial.Default;
 import one.nio.serial.FieldDescriptor;
 import one.nio.serial.JsonName;
 import one.nio.serial.Repository;
+import one.nio.serial.SerializeWith;
+import one.nio.util.Hex;
 import one.nio.util.JavaInternals;
 
 import org.objectweb.asm.ClassVisitor;
@@ -34,6 +36,7 @@ import java.io.ObjectOutputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.security.ProtectionDomain;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -42,6 +45,37 @@ import static one.nio.util.JavaInternals.unsafe;
 
 public class DelegateGenerator extends BytecodeGenerator {
     private static final AtomicInteger index = new AtomicInteger();
+
+    // Allows to bypass security checks when accessing private members of other classes
+    private static final String MAGIC_CLASS = "sun/reflect/MagicAccessorImpl";
+
+    // In JDK 9+ there is no more sun.reflect.MagicAccessorImpl class.
+    // Instead there is package private jdk.internal.reflect.MagicAccessorImpl, which is not visible
+    // by application classes. We abuse ClassLoaded private API to inject a publicly visible bridge
+    // using the bootstrap ClassLoader.
+    //   ¯\_(ツ)_/¯
+    static {
+        if (!System.getProperty("java.version").startsWith("1.")) {
+            try {
+                Method m = ClassLoader.class.getDeclaredMethod("defineClass1", ClassLoader.class, String.class,
+                        byte[].class, int.class, int.class, ProtectionDomain.class, String.class);
+                m.setAccessible(true);
+
+                // public jdk.internal.reflect.MagicAccessorBridge extends jdk.internal.reflect.MagicAccessorImpl
+                defineBootstrapClass(m, "cafebabe00000033000a0a000300070700080700090100063c696e69743e010003282956010004436f64650c000400050100286a646b2f696e7465726e616c2f7265666c6563742f4d616769634163636573736f724272696467650100266a646b2f696e7465726e616c2f7265666c6563742f4d616769634163636573736f72496d706c042100020003000000000001000100040005000100060000001100010001000000052ab70001b1000000000000");
+                // public sun.reflect.MagicAccessorImpl extends jdk.internal.reflect.MagicAccessorBridge
+                defineBootstrapClass(m, "cafebabe00000033000a0a000300070700080700090100063c696e69743e010003282956010004436f64650c0004000501001d73756e2f7265666c6563742f4d616769634163636573736f72496d706c0100286a646b2f696e7465726e616c2f7265666c6563742f4d616769634163636573736f72427269646765042100020003000000000001000100040005000100060000001100010001000000052ab70001b1000000000000");
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+    }
+
+    // Defines a new class by the bootstrap ClassLoader
+    private static void defineBootstrapClass(Method m, String classData) throws ReflectiveOperationException {
+        byte[] code = Hex.parseBytes(classData);
+        m.invoke(null, null, null, code, 0, code.length, null, null);
+    }
 
     public static byte[] generate(Class cls, FieldDescriptor[] fds, List<Field> defaultFields) {
         String className = "sun/reflect/Delegate" + index.getAndIncrement() + '_' + cls.getSimpleName();
@@ -100,7 +134,7 @@ public class DelegateGenerator extends BytecodeGenerator {
                 mv.visitVarInsn(ALOAD, 2);
                 mv.visitVarInsn(ALOAD, 1);
                 if (fd.parentField() != null) emitGetField(mv, fd.parentField());
-                emitGetField(mv, ownField);
+                emitGetField(mv, ownField, fd.useGetter());
                 emitTypeCast(mv, ownField.getType(), sourceClass);
                 mv.visitMethodInsn(INVOKEVIRTUAL, "one/nio/serial/CalcSizeStream", "writeObject", "(Ljava/lang/Object;)V");
             }
@@ -144,7 +178,7 @@ public class DelegateGenerator extends BytecodeGenerator {
             } else {
                 mv.visitVarInsn(ALOAD, 1);
                 if (fd.parentField() != null) emitGetField(mv, fd.parentField());
-                emitGetField(mv, ownField);
+                emitGetField(mv, ownField, fd.useGetter());
                 emitTypeCast(mv, ownField.getType(), sourceClass);
             }
 
@@ -187,7 +221,7 @@ public class DelegateGenerator extends BytecodeGenerator {
                 mv.visitVarInsn(ALOAD, 1);
                 mv.visitMethodInsn(INVOKEVIRTUAL, "one/nio/serial/DataStream", srcType.readMethod(), srcType.readSignature());
                 mv.visitInsn(srcType.convertTo(FieldType.Void));
-            } else if (Modifier.isFinal(ownField.getModifiers())) {
+            } else if (Modifier.isFinal(ownField.getModifiers()) && !fd.useSetter()) {
                 FieldType dstType = FieldType.valueOf(ownField.getType());
                 mv.visitFieldInsn(GETSTATIC, "one/nio/util/JavaInternals", "unsafe", "Lsun/misc/Unsafe;");
                 mv.visitVarInsn(ALOAD, 2);
@@ -205,7 +239,7 @@ public class DelegateGenerator extends BytecodeGenerator {
                 mv.visitMethodInsn(INVOKEVIRTUAL, "one/nio/serial/DataStream", srcType.readMethod(), srcType.readSignature());
                 if (srcType == FieldType.Object) emitTypeCast(mv, Object.class, sourceClass);
                 emitTypeCast(mv, sourceClass, ownField.getType());
-                emitPutField(mv, ownField);
+                emitPutField(mv, ownField, fd.useSetter());
             }
         }
 
@@ -292,7 +326,7 @@ public class DelegateGenerator extends BytecodeGenerator {
 
             mv.visitVarInsn(ALOAD, 1);
             if (fd.parentField() != null) emitGetField(mv, fd.parentField());
-            emitGetField(mv, ownField);
+            emitGetField(mv, ownField, fd.useGetter());
             emitTypeCast(mv, ownField.getType(), sourceClass);
 
             switch (srcType) {
@@ -337,7 +371,7 @@ public class DelegateGenerator extends BytecodeGenerator {
         if (!defaultValue.method().isEmpty()) {
             String methodName = defaultValue.method();
             int p = methodName.lastIndexOf('.');
-            Method m = JavaInternals.getMethod(methodName.substring(0, p), methodName.substring(p + 1));
+            Method m = JavaInternals.findMethod(methodName.substring(0, p), methodName.substring(p + 1));
             if (m == null || !Modifier.isStatic(m.getModifiers()) || !fieldType.isAssignableFrom(m.getReturnType())) {
                 throw new IllegalArgumentException("Invalid default initializer " + methodName + " for field " + field);
             }
@@ -345,7 +379,7 @@ public class DelegateGenerator extends BytecodeGenerator {
         } else if (!defaultValue.field().isEmpty()) {
             String fieldName = defaultValue.field();
             int p = fieldName.lastIndexOf('.');
-            Field f = JavaInternals.getField(fieldName.substring(0, p), fieldName.substring(p + 1));
+            Field f = JavaInternals.findField(fieldName.substring(0, p), fieldName.substring(p + 1));
             if (f == null || !Modifier.isStatic(f.getModifiers()) || !fieldType.isAssignableFrom(f.getType())) {
                 throw new IllegalArgumentException("Invalid default initializer " + fieldName + " for field " + field);
             }
@@ -499,6 +533,40 @@ public class DelegateGenerator extends BytecodeGenerator {
         // The types are not convertible, just leave the default value
         mv.visitInsn(FieldType.valueOf(src).convertTo(FieldType.Void));
         mv.visitInsn(FieldType.Void.convertTo(FieldType.valueOf(dst)));
+    }
+
+    private static void emitGetField(MethodVisitor mv, Field f, boolean useGetter) {
+        if (useGetter) {
+            String getter = f.getAnnotation(SerializeWith.class).getter();
+            try {
+                Method m = f.getDeclaringClass().getDeclaredMethod(getter);
+                if (Modifier.isStatic(m.getModifiers()) || m.getReturnType() != f.getType()) {
+                    throw new IllegalArgumentException("Incompatible getter method: " + m);
+                }
+                emitInvoke(mv, m);
+            } catch (NoSuchMethodException e) {
+                throw new IllegalArgumentException("Getter method not found", e);
+            }
+        } else {
+            emitGetField(mv, f);
+        }
+    }
+
+    private static void emitPutField(MethodVisitor mv, Field f, boolean useSetter) {
+        if (useSetter) {
+            String setter = f.getAnnotation(SerializeWith.class).setter();
+            try {
+                Method m = f.getDeclaringClass().getDeclaredMethod(setter, f.getType());
+                if (Modifier.isStatic(m.getModifiers()) || m.getReturnType() != void.class) {
+                    throw new IllegalArgumentException("Incompatible setter method: " + m);
+                }
+                emitInvoke(mv, m);
+            } catch (NoSuchMethodException e) {
+                throw new IllegalArgumentException("Setter method not found", e);
+            }
+        } else {
+            emitPutField(mv, f);
+        }
     }
 
     private static Label emitNullGuard(MethodVisitor mv, Class<?> dst) {

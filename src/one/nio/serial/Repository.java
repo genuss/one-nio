@@ -55,15 +55,16 @@ public class Repository {
     };
 
     public static final MethodSerializer provide =
-            registerMethod(JavaInternals.getMethod(Repository.class, "provideSerializer", Serializer.class));
+            registerMethod(JavaInternals.findMethod(Repository.class, "provideSerializer", Serializer.class));
     public static final MethodSerializer request =
-            registerMethod(JavaInternals.getMethod(Repository.class, "requestSerializer", long.class));
+            registerMethod(JavaInternals.findMethod(Repository.class, "requestSerializer", long.class));
 
     public static final int SKIP_READ_OBJECT  = 1;
     public static final int SKIP_WRITE_OBJECT = 2;
     public static final int SKIP_CUSTOM_SERIALIZATION = SKIP_READ_OBJECT | SKIP_WRITE_OBJECT;
     public static final int INLINE = 4;
     public static final int FIELD_SERIALIZATION = 8;
+    public static final int SYNTHETIC_FIELDS = 16;
 
     public static final int ARRAY_STUBS      = 1;
     public static final int COLLECTION_STUBS = 2;
@@ -161,8 +162,7 @@ public class Repository {
             addBootstrap(generateFor(Class.forName(className)));
         } catch (ClassNotFoundException e) {
             // Optional class is missing. Skip the slot to maintain the order of other bootstrap serializers.
-            log.warn("Missing optional bootstrap class: " + className);
-            nextBootstrapUid--;
+            addBootstrap(new InvalidSerializer(className));
         }
     }
 
@@ -186,7 +186,7 @@ public class Repository {
     }
 
     public static boolean preload(Class... classes) {
-        for (Class cls : classes) {
+        for (Class<?> cls : classes) {
             get(cls);
         }
         return true;
@@ -312,6 +312,21 @@ public class Repository {
                 return serializer;
             }
 
+            if (cls.isAnonymousClass() && (cls.getModifiers() & ENUM) == 0) {
+                log.warn("Trying to serialize anonymous class: " + cls.getName());
+                anonymousClasses.incrementAndGet();
+            }
+
+            SerialOptions options = cls.getAnnotation(SerialOptions.class);
+            if (options != null) {
+                setOptions(cls, options.value());
+            }
+
+            Renamed renamed = cls.getAnnotation(Renamed.class);
+            if (renamed != null) {
+                renamedClasses.put(renamed.from(), cls);
+            }
+
             if (cls.isArray()) {
                 get(cls.getComponentType());
                 serializer = new ObjectArraySerializer(cls);
@@ -340,18 +355,6 @@ public class Repository {
 
             serializer.generateUid();
             provideSerializer(serializer);
-
-            if (cls.isAnonymousClass()) {
-                log.warn("Trying to serialize anonymous class: " + cls.getName());
-                anonymousClasses.incrementAndGet();
-            }
-
-            Renamed renamed = cls.getAnnotation(Renamed.class);
-            if (renamed != null) {
-                renamedClasses.put(renamed.from(), cls);
-            }
-
-            serializerGenerated.accept(cls, serializer);
             return serializer;
         }
     }
@@ -364,5 +367,3 @@ public class Repository {
         return classLocks[cls.hashCode() & (classLocks.length - 1)];
     }
 }
-
-

@@ -21,7 +21,7 @@ import org.junit.Test;
 import java.util.LinkedList;
 import java.util.List;
 
-import static junit.framework.Assert.*;
+import static org.junit.Assert.*;
 
 /**
  * Abstract unit tests for different {@link Malloc} descendants
@@ -30,13 +30,6 @@ import static junit.framework.Assert.*;
  */
 public abstract class AbstractMallocTest {
     protected abstract Malloc newInstance(long capacity);
-
-    private static void statistics(Malloc malloc) {
-        System.out.printf(
-                "Used: %d, Free: %d\n",
-                malloc.getUsedMemory(),
-                malloc.getFreeMemory());
-    }
 
     @Test
     public void testIncrementalMalloc() {
@@ -152,5 +145,12 @@ public abstract class AbstractMallocTest {
     @Test(expected = OutOfMemoryException.class)
     public void testNotEnoughSpace() {
         newInstance(65536).malloc(65000);
+    }
+
+    @Test
+    public void testWrongAllocatedSize() {
+        Malloc malloc = newInstance(65536);
+        assertEquals(0, malloc.allocatedSize(malloc.base - 1));
+        assertEquals(0, malloc.allocatedSize(malloc.base + malloc.capacity));
     }
 }
