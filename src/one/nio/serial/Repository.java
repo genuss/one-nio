@@ -355,6 +355,7 @@ public class Repository {
 
             serializer.generateUid();
             provideSerializer(serializer);
+            serializerGenerated.accept(cls, serializer);
             return serializer;
         }
     }
