@@ -162,12 +162,12 @@
 
     <distributionManagement>
         <repository>
-            <id>openback-release</id>
-            <url>http://repo.open-broker.ru/repository/releases</url>
+            <id>open-broker-nexus-releases</id>
+            <url>https://nexus3.open-broker.ru/repository/maven2-opr-release</url>
         </repository>
         <snapshotRepository>
-            <id>openback-snapshot</id>
-            <url>http://repo.open-broker.ru/repository/snapshots</url>
+            <id>open-broker-nexus-snapshots</id>
+            <url>https://nexus3.open-broker.ru/repository/maven2-opr-snapshot</url>
         </snapshotRepository>
     </distributionManagement>
 </project>
