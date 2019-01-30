@@ -56,6 +56,11 @@ public class LongObjectHashMap<T> extends LongHashSet {
     }
 
     @SuppressWarnings("unchecked")
+    public T[] values() {
+        return (T[]) Arrays.copyOf(values, values.length);
+    }
+
+    @SuppressWarnings("unchecked")
     public final T valueAt(int index) {
         return (T) values[index];
     }

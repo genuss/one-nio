@@ -17,6 +17,7 @@
 package one.nio.serial;
 
 import one.nio.gen.BytecodeGenerator;
+import one.nio.mem.LongObjectHashMap;
 import one.nio.serial.gen.StubGenerator;
 import one.nio.util.Hex;
 
@@ -147,7 +148,14 @@ class SerializationMXBeanImpl implements SerializationMXBean {
     }
 
     private String[] getSerializers(Map<?, ? extends Serializer> map) {
-        Serializer[] serializers = map.values().toArray(new Serializer[0]);
+        return doGetSerializers(map.values().toArray(new Serializer[0]));
+    }
+
+    private String[] getSerializers(LongObjectHashMap<Serializer> uidMap) {
+        return doGetSerializers(uidMap.values());
+    }
+
+    private String[] doGetSerializers(Serializer[] serializers) {
         String[] result = new String[serializers.length];
         int i = 0;
         for (Serializer serializer : serializers) {

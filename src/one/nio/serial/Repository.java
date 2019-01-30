@@ -17,6 +17,7 @@
 package one.nio.serial;
 
 import one.nio.gen.BytecodeGenerator;
+import one.nio.mem.LongObjectHashMap;
 import one.nio.mgt.Management;
 import one.nio.util.Base64;
 import one.nio.util.JavaInternals;
@@ -44,7 +45,7 @@ public class Repository {
 
     static final byte[][] classLocks = new byte[64][0];
     static final ConcurrentHashMap<Class, Serializer> classMap = new ConcurrentHashMap<>(128);
-    static final ConcurrentHashMap<Long, Serializer> uidMap = new ConcurrentHashMap<>(128);
+    static final LongObjectHashMap<Serializer> uidMap = new LongObjectHashMap<>(1024 * 1024);
     static final ConcurrentHashMap<Method, MethodSerializer> methodMap = new ConcurrentHashMap<>();
     static final Serializer[] bootstrapSerializers = new Serializer[128];
     static final ConcurrentHashMap<Class, Integer> serializationOptions = new ConcurrentHashMap<>();
@@ -193,7 +194,7 @@ public class Repository {
     }
 
     public static boolean hasSerializer(long uid) {
-        return uidMap.containsKey(uid);
+        return uidMap.get(uid) != null;
     }
 
     public static Serializer requestSerializer(long uid) throws SerializerNotFoundException {
@@ -209,7 +210,7 @@ public class Repository {
     }
 
     public static void provideSerializer(Serializer serializer) {
-        Serializer oldSerializer = uidMap.put(serializer.uid, serializer);
+        Serializer oldSerializer = uidMap.replace(serializer.uid, serializer);
         if (oldSerializer != null && oldSerializer.cls != serializer.cls) {
             throw new IllegalStateException("UID collision: " + serializer.descriptor + " overwrites " + oldSerializer.descriptor);
         }
@@ -265,7 +266,7 @@ public class Repository {
     }
 
     public static byte[] saveSnapshot() throws IOException {
-        Serializer[] serializers = uidMap.values().toArray(new Serializer[0]);
+        Serializer[] serializers = uidMap.values();
 
         CalcSizeStream css = new CalcSizeStream();
         for (Serializer serializer : serializers) {
